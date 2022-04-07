@@ -5,21 +5,23 @@ namespace App\Security;
 use App\Entity\User;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Security\Core\Security;
-use Symfony\Component\Security\Csrf\CsrfToken;
+use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\Security\Core\User\UserInterface;
-use Symfony\Component\Security\Http\Util\TargetPathTrait;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
-use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
-use Symfony\Component\Security\Core\User\UserProviderInterface;
-use Symfony\Component\Security\Guard\PasswordAuthenticatedInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Exception\InvalidCsrfTokenException;
-use Symfony\Component\Security\Core\Exception\UsernameNotFoundException;
 use Symfony\Component\Security\Core\Encoder\UserPasswordEncoderInterface;
+use Symfony\Component\Security\Core\Exception\InvalidCsrfTokenException;
+use Symfony\Component\Security\Core\Security;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Core\User\UserProviderInterface;
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Security\Guard\Authenticator\AbstractFormLoginAuthenticator;
+use Symfony\Component\Security\Guard\PasswordAuthenticatedInterface;
+use Symfony\Component\Security\Http\Util\TargetPathTrait;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticator implements PasswordAuthenticatedInterface
 {
@@ -32,9 +34,11 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
     private $csrfTokenManager;
     private $passwordEncoder;
     private $client;
+    private $logger;
 
-    public function __construct(EntityManagerInterface $entityManager, UrlGeneratorInterface $urlGenerator, CsrfTokenManagerInterface $csrfTokenManager, UserPasswordEncoderInterface $passwordEncoder, HttpClientInterface $client)
+    public function __construct(LoggerInterface $logger, EntityManagerInterface $entityManager, UrlGeneratorInterface $urlGenerator, CsrfTokenManagerInterface $csrfTokenManager, UserPasswordEncoderInterface $passwordEncoder, HttpClientInterface $client)
     {
+        $this->logger = $logger;
         $this->entityManager = $entityManager;
         $this->urlGenerator = $urlGenerator;
         $this->csrfTokenManager = $csrfTokenManager;
@@ -45,7 +49,7 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
     public function supports(Request $request)
     {
         return self::LOGIN_ROUTE === $request->attributes->get('_route')
-            && $request->isMethod('POST');
+        && $request->isMethod('POST');
     }
 
     public function getCredentials(Request $request)
@@ -63,8 +67,9 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
         return $credentials;
     }
 
-    public function getUser($credentials, UserProviderInterface $userProvider, EntityManager $em)
+    public function getUser($credentials, UserProviderInterface $userProvider)
     {
+        $em = $this->entityManager;
         $token = new CsrfToken('authenticate', $credentials['csrf_token']);
         if (!$this->csrfTokenManager->isTokenValid($token)) {
             throw new InvalidCsrfTokenException();
@@ -85,6 +90,8 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
 
     public function checkCredentials($credentials, UserInterface $user)
     {
+        $logger = $this->logger;
+        $em = $this->entityManager;
         $username = $credentials['username'];
         $password = $credentials['password'];
         $response = $this->client->request(
@@ -93,11 +100,32 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
             [
                 'body' => 'data={
                     "identifiant": "' . $username . '",
-                    "motdepasse":"'. urlencode($password).'"
+                    "motdepasse":"' . urlencode($password) . '"
                 }',
             ]
-            );
-        return $this->passwordEncoder->isPasswordValid($user, $credentials['password']);
+        );
+        // $logger->warning("ecoledirecte".json_decode(print_r($response,true)));
+        //  $logger->warning("ecoledirecte". print_r(json_decode($response->getContent(), true)));
+        // $logger->warning("ecoledirecte" . print_r(json_decode($response->getContent()), true));
+        $ecoleDirecteResponse = json_decode($response->getContent());
+        $ecoleDirecteCode = $ecoleDirecteResponse->code;
+        $ecoleDirecteMessage = $ecoleDirecteResponse->message;
+
+        $ecoleDirectePrenom = $ecoleDirecteResponse->data->accounts[0]->prenom;
+        $ecoleDirecteClasse = $ecoleDirecteResponse->data->accounts[0]->profile->classe->libelle;
+        $logger->warning("ecoleDirectePrenom = '" . print_r($ecoleDirectePrenom, true)."'");
+        $logger->warning("ecoleDirecteClasse = '" . print_r($ecoleDirecteClasse, true)."'");
+         $logger->warning("ecoleDirecteAll" . print_r(json_decode($response->getContent()), true));
+
+        
+        // if ($ecoleDirecteCode == 200) {
+        //     return true;
+        // } else {
+        //     $em->remove($user);
+        //     $em->flush();
+        //     return false;
+        // }
+        return false;
     }
 
     /**
@@ -115,7 +143,7 @@ class LoginFormAuthentificatorAuthenticator extends AbstractFormLoginAuthenticat
         }
 
         return new RedirectResponse($this->urlGenerator->generate('home'));
-        throw new \Exception('TODO: provide a valid redirect inside '.__FILE__);
+        throw new \Exception('TODO: provide a valid redirect inside ' . __FILE__);
     }
 
     protected function getLoginUrl()

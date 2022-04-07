@@ -1,0 +1,6 @@
+projectKey=https:-github.com-AllanBiville-symfony-tp-security-username.git
+serverUrl=http://localhost:9000
+serverVersion=9.3.0.51899
+dashboardUrl=http://localhost:9000/dashboard?id=https%3A-github.com-AllanBiville-symfony-tp-security-username.git
+ceTaskId=AX90gg_OxQ63BVUsxtvu
+ceTaskUrl=http://localhost:9000/api/ce/task?id=AX90gg_OxQ63BVUsxtvu
